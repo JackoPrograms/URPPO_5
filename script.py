@@ -1,50 +1,42 @@
-# Adds adds two numbers
-def add(x, y):
-    return x + y
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
 
-# Subtract subtracts two numbers
-def subtract(x, y):
-    return x - y
 
-# Multiply multiplies two numbers
-def multiply(x, y):
-    return x * y
+def build(numDisparities, blockSize):
+    img_l = cv2.imread("DSC02692.JPG", 2)
+    img_r = cv2.imread("DSC02694.JPG", 2)
 
-# Divide divides two numbers
-def divide(x, y):
-    return x / y
+    calibration_data = np.load("calibration.npz")
+    mtx = calibration_data["mtx"]  # матрица камеры
+    dist = calibration_data["dist"]  # коэффициенты дисторсии
 
-def run():
-    print("Select listed operation:\n 1) Add\n 2) Sub\n 3) Mult\n 4) Div\n")
+    # Для нового изображения узнаём размеры
+    h, w = img_r.shape[:2]
+    newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
 
-    while True:
-        choice = input("Enter your choice: ")
+    # создание отображающих матриц
+    mapx1_1, mapy2_1 = cv2.initUndistortRectifyMap(
+        mtx, dist, None, newcameramtx, (w, h), cv2.CV_32FC1
+    )
+    mapx1_2, mapy2_2 = cv2.initUndistortRectifyMap(
+        mtx, dist, None, newcameramtx, (w, h), cv2.CV_32FC1
+    )
+    dst_one = cv2.remap(img_l, mapx1_1, mapy2_1, cv2.INTER_LINEAR)
+    dst_two = cv2.remap(img_r, mapx1_2, mapy2_2, cv2.INTER_LINEAR)
 
-        if choice in ('1', '2', '3', '4'):
-            try:
-                num1 = float(input("Enter your first operation number: "))
-                num2 = float(input("Enter your second operation number: "))
-            except ValueError:
-                print("Invalid input. 500 error. Try again.")
-                continue
+    # создание объекта алгоритма StereoBM
+    stereo = cv2.StereoBM_create(numDisparities=numDisparities, blockSize=blockSize)
+    # вычисление карты диспаритета
+    disparity = stereo.compute(dst_one, dst_two)
+    disparity_normalized = cv2.normalize(
+        disparity, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U
+    )  # нормализация карты диспаритета
 
-            if choice == '1':
-                print(num1, " + ", num2, "   = ", add(num1, num2))
+    # изменение размера изображения
+    resized_img = cv2.resize(disparity_normalized, (800, 900))
+    # построим
+    plt.imshow(resized_img)
 
-            elif choice == '2':
-                print(num1, " - ", num2, "   = ", subtract(num1, num2))
 
-            elif choice == '3':
-                print(num1, " * ", num2, "   = ", multiply(num1, num2))
-
-            elif choice == '4':
-                print(num1, " / ", num2, "   = ", divide(num1, num2))
-
-        is_need_to_continue = input("Perform another operation? (y/n): ")
-        if is_need_to_continue == "n":
-            break
-        else:
-            print("Invalid Input. Error.")
-
-if __name__ == "__main__":
-    run()
+build(16, 5)
